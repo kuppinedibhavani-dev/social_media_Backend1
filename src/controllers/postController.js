@@ -1,27 +1,35 @@
 import { supabase } from "../config/supabase.js";
+import jwt from "jsonwebtoken";
+
 export const createPost = async (req, res) => {
   try {
-    const userId = req.user;
+    const authHeader = req.headers.authorization;
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.decode(token);
+    const realUserId = decoded.sub;
+
+    if (!realUserId) {
+      return res.status(400).json({ success: false, message: "Invalid token" });
+    }
 
     const { content, platform, schedule_time } = req.body;
 
-    if (!content || !platform)
-      return res.status(400).json({
-        success: false,
-        message: "content and platform are required",
-      });
+    if (!content || !platform) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing fields" });
+    }
 
     const isScheduled = Boolean(schedule_time);
 
-    // Insert post
     const { data, error } = await supabase
       .from("posts")
       .insert([
         {
-          user_id: userId,
+          user_id: realUserId,
           content,
           platform,
-          schedule_time,
+          schedule_time: schedule_time || null,
           status: isScheduled ? "scheduled" : "published",
         },
       ])
@@ -29,55 +37,36 @@ export const createPost = async (req, res) => {
 
     if (error) return res.status(400).json({ success: false, error });
 
-    const post = data[0];
-
-    /* ---------------------------------------------------------
-       ⭐ CREATE NOTIFICATION FOR THIS USER (Realtime will use it)
-    ---------------------------------------------------------- */
-    await supabase.from("notifications").insert([
-      {
-        user_id: userId,
-        message: isScheduled
-          ? `Scheduled post for ${platform} at ${schedule_time}`
-          : `New post published on ${platform}`,
-      },
-    ]);
-
-    return res.json({
+    res.json({
       success: true,
-      scheduled: isScheduled,
-      message: isScheduled
-        ? "Post scheduled successfully"
-        : "Post published immediately",
-      post,
+      message: "Post created",
+      post: data[0],
     });
   } catch (err) {
-    console.error("CREATE POST ERROR:", err);
-    res.status(500).json({ error: "Server Error" });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 export const getPosts = async (req, res) => {
   try {
-    const userId = req.user; // 👈 UUID string directly from middleware
+    const authHeader = req.headers.authorization;
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.decode(token);
+    const realUserId = decoded.sub;
 
     const { data, error } = await supabase
       .from("posts")
       .select("*")
-      .eq("user_id", userId)          // ✔ correct filter
+      .eq("user_id", realUserId)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("SUPABASE GET POSTS ERROR:", error);
-      return res.status(400).json({ error });
-    }
+    if (error) return res.status(400).json({ success: false, error });
 
-    return res.json({
+    res.json({
       success: true,
       posts: data || [],
     });
-
   } catch (err) {
-    console.error("GET POSTS ERROR:", err);
-    return res.status(500).json({ error: "Server error" });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

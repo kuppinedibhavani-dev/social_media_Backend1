@@ -1,46 +1,51 @@
-import bcrypt from "bcrypt";
 import { supabase } from "../config/supabase.js";
-import { generateToken } from "../utils/generateToken.js";
 
+// ---------------- REGISTER ----------------
 export const registerUser = async (req, res) => {
   const { name, email, password } = req.body;
 
-  const hash = await bcrypt.hash(password, 10);
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { name },
+      emailRedirectTo: "http://localhost:5173"
+    }
+  });
 
-  const { data, error } = await supabase
-    .from("users")
-    .insert([{ name, email, password: hash }])
-    .select();
-    console.log("REGISTER BODY:", req.body);
-    console.log("SUPABASE ERROR:", error);
+  if (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
 
-  if (error) return res.status(400).json(error);
+  // AUTO-CONFIRM (only works if RLS + settings allow)
+  await supabase.rpc("confirm_user_email", { user_email: email });
 
-  res.json({
-    message: "User Registered Successfully",
-    token: generateToken(data[0].id),
-    user: data[0]
+  return res.json({
+    success: true,
+    message: "Registered successfully",
+    userId: data.user.id
   });
 };
 
+// ---------------- LOGIN ----------------
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
-  const { data: user } = await supabase
-    .from("users")
-    .select("*")
-    .eq("email", email)
-    .single();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-  if (!user) return res.status(404).json({ message: "User not found" });
-
-  const match = await bcrypt.compare(password, user.password);
-
-  if (!match) return res.status(400).json({ message: "Invalid credentials" });
+  if (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
 
   res.json({
-    message: "Login Successful",
-    token: generateToken(user.id),
-    user
+    success: true,
+    message: "Login successful",
+    token: data.session.access_token,
+    userId: data.user.id,
+    email: data.user.email
   });
+  
 };

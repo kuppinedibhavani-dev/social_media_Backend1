@@ -1,20 +1,23 @@
 import jwt from "jsonwebtoken";
 
 export const protect = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer "))
+    return res.status(401).json({ message: "No token provided" });
+
+  const token = authHeader.split(" ")[1];
+
   try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ message: "Not authorized" });
+    const decoded = jwt.decode(token); // Supabase tokens are NOT signed with your secret
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded || !decoded.sub) {
+      return res.status(400).json({ message: "Invalid token payload" });
+    }
 
-    console.log("DECODED TOKEN = ", decoded);
-    console.log("REQ.USER SET AS = ", decoded.id);
-
-    req.user = decoded.id;  // MUST BE ONLY UUID
-
+    req.user = decoded.sub; // USER ID
     next();
   } catch (err) {
-    console.log(err);
-    res.status(401).json({ message: "Token failed" });
+    return res.status(403).json({ message: "Invalid token" });
   }
 };
