@@ -9,7 +9,7 @@ export const registerUser = async (req, res) => {
     password,
     options: {
       data: { name },
-      emailRedirectTo: "http://localhost:5173"
+      emailRedirectTo: process.env.FRONTEND_URL
     }
   });
 
