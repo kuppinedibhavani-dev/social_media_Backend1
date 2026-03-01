@@ -4,7 +4,7 @@ import { supabase } from "../config/supabase.js";
 
 const router = express.Router();
 
-// Store upload in memory (buffer mode)
+// Store upload in memory
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ---- Upload Avatar ----
@@ -13,39 +13,33 @@ router.post("/upload", upload.single("avatar"), async (req, res) => {
     const file = req.file;
     const userId = req.body.userId;
 
-    if (!file) {
-      return res.status(400).json({ error: "No image file uploaded" });
-    }
+    if (!file) return res.status(400).json({ error: "No image uploaded" });
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
 
-    if (!userId) {
-      return res.status(400).json({ error: "Missing userId" });
-    }
-
-    // Create unique filename
     const ext = file.originalname.split(".").pop();
     const fileName = `avatar_${userId}_${Date.now()}.${ext}`;
 
-    // Upload to Supabase storage - WITH UPSERT
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    // Upload to Supabase
+    const { error: uploadError } = await supabase.storage
       .from("avatars")
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
-        upsert: true, // ⭐ ALLOW REPLACEMENT
+        upsert: true,
       });
 
     if (uploadError) {
-      console.error("Upload Error:", uploadError);
-      return res.status(500).json({ error: "Failed to upload image" });
+      console.error(uploadError);
+      return res.status(500).json({ error: "Failed to upload avatar" });
     }
 
-    // Get public URL properly
+    // Get public URL
     const { data: publicUrlData } = supabase.storage
       .from("avatars")
       .getPublicUrl(fileName);
 
-    const avatarUrl = publicUrlData.publicUrl; // ⭐ Correct path
+    const avatarUrl = publicUrlData.publicUrl;
 
-    // Update user row
+    // Update user record
     const { data: updatedUser, error: updateError } = await supabase
       .from("users")
       .update({ avatar_url: avatarUrl })
@@ -54,8 +48,8 @@ router.post("/upload", upload.single("avatar"), async (req, res) => {
       .single();
 
     if (updateError) {
-      console.error("Update Error:", updateError);
-      return res.status(500).json({ error: "Failed to update user" });
+      console.error(updateError);
+      return res.status(500).json({ error: "Failed to update user avatar" });
     }
 
     res.json({
@@ -68,14 +62,15 @@ router.post("/upload", upload.single("avatar"), async (req, res) => {
     console.error("Avatar upload server error:", err);
     res.status(500).json({ error: "Server error uploading avatar" });
   }
-  // ---- Update profile info (name/email/password) ----
+});
+
+// ---- Update Profile ----
 router.put("/update-profile", async (req, res) => {
   try {
     const { userId, name, email } = req.body;
 
-    if (!userId) {
+    if (!userId)
       return res.status(400).json({ error: "Missing userId" });
-    }
 
     const { data: user, error } = await supabase
       .from("users")
@@ -95,10 +90,9 @@ router.put("/update-profile", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Update-profile server error:", err);
+    console.error("Update-profile error:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
-});
 });
 
 export default router;
